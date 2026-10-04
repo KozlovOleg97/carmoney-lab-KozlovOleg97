@@ -21,7 +21,9 @@
       "git push*": "ask",
       "make *": "allow",
       "*.env*": "deny",
-      "*reset_db*": "deny"
+      "*reset_db*": "deny",
+      "rm -rf*": "deny",
+      "git push --force*": "deny"
     }
   }
 }
