@@ -1,10 +1,14 @@
 # План MILEAGE: правило пробега в решении по заявке
 
 Задача: `mileage <= 400 000` — решение считается по текущей логике LTV;
-`mileage > 400 000` — решение `review` (правило из задачи заказчика).
+`mileage > 400 000` — заявка, которая по LTV получила бы `approve`,
+понижается до `review`; `review` и `reject` по LTV пробег не меняет
+(`docs/intent/intent_MILEAGE.md`, `docs/spec/spec_MILEAGE.md`,
+REQ-MILEAGE-02, REQ-MILEAGE-03).
 
 Опора: `docs/setup/code_map.md` (точка вставки — `DecisionEngine::decide()`,
-проверка пробега до веток LTV), сводка Scout по mileage из
+проверка пробега в `DecisionEngine::decide()` как пост-обработка LTV-решения:
+понижает только approve до review), сводка Scout по mileage из
 `docs/setup/agents.md` (репозиторий/схема/сид/тесты — пробег там не участвует
 в решении, менять их не нужно).
 
@@ -16,14 +20,15 @@
 классам, а `DecisionEngine` перестаёт быть единственным источником решения.
 
 Диапазон валидации не меняется: `0 <= mileage <= 500 000`
-(`vehicle.max_mileage_km`). Интервал 400 001..500 000 остаётся валидным
-входом, но даёт `review`; всё, что больше 500 000, как раньше —
+(`vehicle.max_mileage_km`). Интервал 400 001..500 000 остаётся валидным входом; при LTV-approve он даёт
+`review`, при LTV-review — `review`, при LTV-reject — `reject` (смягчения
+reject нет); всё, что больше 500 000, как раньше —
 `ValidationException` до расчёта решения.
 
 ## Файлы
 
 1. `backend/config/rules.php` — в секцию `vehicle` добавить ключ `'review_mileage_km' => 400000` с комментарием; существующие пороги не трогать.
-2. `backend/src/Domain/DecisionEngine.php` — новый параметр конструктора `int $reviewMileageKm`, сигнатура `decide(float $ltv, int $mileage)`, проверка пробега до веток LTV; обновить PHPDoc класса и конструктора.
+2. `backend/src/Domain/DecisionEngine.php` — новый параметр конструктора `int $reviewMileageKm`, сигнатура `decide(float $ltv, int $mileage)`; решение сначала считается по существующим веткам LTV без изменений, затем, если оно `APPROVE` и `$mileage > $reviewMileageKm`, понижается до `REVIEW`; обновить PHPDoc класса и конструктора.
 3. `backend/src/Domain/AssessmentService.php` — строка 33: вызвать `$this->decisionEngine->decide($ltv, $input['mileage'])`.
 4. `backend/src/AppFactory.php` — строка 37: `new DecisionEngine($rules['ltv'], (int) $rules['vehicle']['review_mileage_km'])`.
 5. `tests/Unit/DecisionEngineTest.php` — `setUp()`: второй аргумент конструктора `400000`; существующий провайдер LTV вызывает `decide($ltv, 100000)`; новый провайдер граничных значений пробега.
@@ -36,7 +41,7 @@
 ## Шаги
 
 1. `rules.php`: добавить `vehicle.review_mileage_km = 400000` (значение из задачи; новый ключ, не изменение существующих).
-2. `DecisionEngine`: параметр конструктора `int $reviewMileageKm` (со свойством), параметр `int $mileage` в `decide()`; первой проверкой — `if ($mileage > $this->reviewMileageKm) { return self::REVIEW; }`, затем существующие ветки LTV без изменений; обновить PHPDoc (включить правило пробега в описание решения).
+2. `DecisionEngine`: параметр конструктора `int $reviewMileageKm` (со свойством), параметр `int $mileage` в `decide()`; решение по существующим веткам LTV считается без изменений, после чего правило пробега применяется только к `APPROVE`: `if ($decision === self::APPROVE && $mileage > $this->reviewMileageKm) { $decision = self::REVIEW; }` — review и reject по LTV пробег не меняет (REQ-MILEAGE-02, REQ-MILEAGE-03); обновить PHPDoc (включить правило пробега в описание решения).
 3. `AssessmentService`: передать `$input['mileage']` вторым аргументом в `decide()` (валидатор гарантирует там int).
 4. `AppFactory`: прокинуть `(int) $rules['vehicle']['review_mileage_km']` в конструктор `DecisionEngine`.
 5. `DecisionEngineTest`: обновить конструктор и все вызовы `decide()`; добавить провайдер границ пробега (см. Тесты).
@@ -55,12 +60,12 @@
 
 - 399999 → `APPROVE` — пробег под порогом, решение по LTV;
 - 400000 → `APPROVE` — граница «не больше 400 000» включена;
-- 400001 → `REVIEW` — первое значение за границей, правило срабатывает до LTV;
-- 500000 → `REVIEW` — верхняя граница валидации `max_mileage_km`, всё ещё `review`.
+- 400001 → `REVIEW` — первое значение за границей, approve по LTV понижен до review (REQ-MILEAGE-02, AC-MILEAGE-04);
+- 500000 → `REVIEW` — верхняя граница валидации `max_mileage_km`, всё ещё `review` (AC-MILEAGE-05).
 
-Отдельный случай взаимодействия: `decide(95.0, 400001)` → `REVIEW` —
-фиксирует, что правило пробега проверяется раньше reject-ветки LTV
-(ожидание связано с вопросом 1 заказчику).
+Отдельные случаи взаимодействия (REQ-MILEAGE-03, AC-MILEAGE-06, AC-MILEAGE-07):
+- `decide(70.0, 400001)` → `REVIEW` — review-зона LTV остаётся review;
+- `decide(95.0, 400001)` → `REJECT` — reject по LTV не смягчается пробегом.
 
 Существующий провайдер `ltvValues`: вызов меняется на `decide($ltv, 100000)`,
 все шесть ожиданий сохраняются.
@@ -71,8 +76,10 @@ LTV 50% (`payload(450000, 900000)`), варьируется пробег:
 
 - mileage 399999 → `decision = approve`, `approved_limit = 450000`;
 - mileage 400000 → `decision = approve`, `approved_limit = 450000`;
-- mileage 400001 → `decision = review`, `approved_limit = 0`;
-- пустой пробег (ключ `mileage` отсутствует) → `ValidationException`, `errors()` содержит ключ `mileage`;
+- mileage 400001 → `decision = review`, `approved_limit = 0` (AC-MILEAGE-04, AC-MILEAGE-09);
+- mileage 400001 при LTV > 85% (`payload(900000, 1000000)`) → `decision = reject` — reject не смягчается (AC-MILEAGE-07);
+- mileage 400001 при 60% <= LTV <= 85% → `decision = review` — review-зона не меняется (AC-MILEAGE-06);
+- пустой пробег (ключ `mileage` отсутствует) → `ValidationException`, `errors()` содержит ключ `mileage` (AC-MILEAGE-12);
 - пустой пробег (`'mileage' => null`) → `ValidationException`, `errors()` содержит ключ `mileage`.
 
 Тест пустого пробега — в стиле `testRejectsAmountBelowMinimum` из
@@ -89,7 +96,7 @@ LTV 50% (`payload(450000, 900000)`), варьируется пробег:
 
 1. Смена сигнатуры `decide()` ломает все точки вызова: `AssessmentService.php:33`, `DecisionEngineTest.php:23` и три места сборки `DecisionEngine` (`AppFactory.php:37`, `DecisionEngineTest.php:17`, `AssessmentServiceTest.php:27`). Пропущенное место — фатальная ошибка в рантайме. Смягчение: после правок — `make test`, `make lint` и поиск `->decide(` по репозиторию.
 2. Взаимодействие с `max_mileage_km = 500000`: нельзя «упростить» задачу, снизив `max_mileage_km` до 400000 — тогда заявки с пробегом 400 001..500 000 начнут получать `ValidationException` вместо `review`, изменится контракт API и бизнес-решение. Существующий порог не трогать (правило AGENTS.md про пороги).
-3. Семантика «review перекрывает reject»: заявка с пробегом 400 001+ и LTV > 85 получит `review` вместо `reject` — смягчение риск-решения. В плане заложено по буквальной формулировке задачи и code_map, но это бизнес-выбор — подтверждение заказчика (вопрос 1).
+3. Смягчение reject: проверка пробега должна применяться только к approve, иначе заявка с пробегом 400 001+ и LTV > 85% получит `review` вместо `reject` — прямое нарушение REQ-MILEAGE-03. Реализация «сначала LTV, потом понижение approve» это исключает; тест `decide(95.0, 400001) → REJECT` фиксирует (ответ заказчика, вопрос 1 интервью, закрыт).
 4. Добавление ключа в `rules.php` влияет на бизнес-решение: кладём только новый `review_mileage_km = 400000` из задачи; существующие пороги (`approve_max`, `review_max`, `max_mileage_km` и др.) и ожидания существующих тестов не подгонять.
 5. Опечатка/пропуск ключа `review_mileage_km`: в `strict_types` конструктор `DecisionEngine` упадёт с TypeError (null не приводится к int). Ключ и проводку в `AppFactory` делать в одном коммите; в `AppFactory` — явный `(int)`-каст.
 6. Пустая строка пробега `''` приводится к 0 и проходит как «нулевый пробег», обойдя и новое правило — существующая дыра валидации, текущей задачей не закрывается (вопрос 2).
@@ -99,9 +106,11 @@ LTV 50% (`payload(450000, 900000)`), варьируется пробег:
 
 ## Вопросы заказчику
 
-1. Пробег > 400 000 при одновременно плохом LTV (зона reject) — итог `review` (правило пробега проверяется первым) или `reject` (более строгое решение не смягчаем)? В плане заложен первый вариант.
-2. Что считать «пустым пробегом»: отсутствует поле / `null` / пустая строка `''`? Сейчас отсутствие и `null` дают ошибку валидации, а `''` приводится к 0 и считается валидным. Нужно ли явно отклонять `''`?
-3. `approved_limit` при `review` из-за пробега — оставить 0, как у всех не-approve решений?
-4. Пересчитывать ли уже сохранённые решения в `decisions`, или правило действует только на новые заявки?
-5. Пробег 0 км — валидное значение (сейчас да, решение по LTV)? Подтвердить, что он не должен сам по себе давать `review`.
-6. Подтвердить значение порога 400 000 и его размещение в `rules.php` (ключ `vehicle.review_mileage_km`), чтобы порог менялся конфигом без правки кода.
+Открытых вопросов нет — все закрыты заказчиком в интервью (`grill_MILEAGE.md`,
+intent, раздел «Open questions»), сверено со спекой:
+
+1. Пробег > 400 000 при плохом LTV — закрыт (вопрос 1): reject, понижается только approve.
+2. «Пустой пробег» — закрыт (вопрос 2): валидация не меняется, дыра `'' → 0` вне рамок.
+3. `approved_limit` при review из-за пробега — закрыт (вопрос 3): 0, как у всех не-approve решений.
+4. Пересчёт сохранённых решений — закрыт (вопрос 4): нет, правило только на новые заявки.
+5. Радиус задачи — закрыт (вопрос 5): только расчёт решения; порог 400 000 остаётся конфигом (`vehicle.review_mileage_km`).
