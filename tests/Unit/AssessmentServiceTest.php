@@ -129,4 +129,31 @@ final class AssessmentServiceTest extends TestCase
             self::assertArrayHasKey('mileage', $exception->errors());
         }
     }
+
+    public function testDowngradesLtvApproveToReviewAtMileage500000(): void
+    {
+        $result = $this->service->assess($this->payload(450000, 900000, 500000));
+
+        self::assertSame(50.0, $result['ltv']);
+        self::assertSame(DecisionEngine::REVIEW, $result['decision']);
+        self::assertSame(0, $result['approved_limit']);
+    }
+
+    public function testKeepsLtvReviewAtMileage400001(): void
+    {
+        $result = $this->service->assess($this->payload(675000, 900000, 400001));
+
+        self::assertSame(75.0, $result['ltv']);
+        self::assertSame(DecisionEngine::REVIEW, $result['decision']);
+        self::assertSame(0, $result['approved_limit']);
+    }
+
+    public function testApprovesLowLtvAtZeroMileage(): void
+    {
+        $result = $this->service->assess($this->payload(450000, 900000, 0));
+
+        self::assertSame(50.0, $result['ltv']);
+        self::assertSame(DecisionEngine::APPROVE, $result['decision']);
+        self::assertSame(450000, $result['approved_limit']);
+    }
 }
