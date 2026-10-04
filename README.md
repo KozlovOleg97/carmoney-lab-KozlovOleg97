@@ -31,6 +31,23 @@ Docker'а на ноутбуке нет? Тогда локально работа
 | `make seed` | перезалить учебные данные |
 | `make help` | список всех команд |
 
+## Как проверить, что сервис жив
+
+После `make up` дождитесь, пока `db` пройдёт healthcheck (`mysqladmin ping` из
+`docker-compose.yml` — до 20 попыток по 5 с). Порт снаружи переопределяется
+переменной `APP_PORT` (по умолчанию `8080`); в командах ниже используйте
+`${APP_PORT:-8080}`.
+
+| Проверка | Команда | Ожидаемый результат |
+|---|---|---|
+| Состояние контейнеров | `make ps` | `backend` в `Up`, `db` в `healthy` |
+| Логи backend | `make logs` | стартовая строка `php -S 0.0.0.0:8080 -t backend/public backend/public/router.php` без ошибок |
+| HTTP healthcheck | `curl -i http://localhost:${APP_PORT:-8080}/health` | `200 OK` и JSON со статусом |
+| Сквозная проверка LTV | `curl -X POST http://localhost:${APP_PORT:-8080}/api/ltv -H 'Content-Type: application/json' -d '{"vin":"XTA21099998765432","year":2019,"mileage":84000,"market_value":900000,"requested_amount":450000,"term_months":24}'` | `ltv` и `decision` (`approve` / `review` / `reject`) |
+
+Если порт `8080` занят, поднимите стенд на другом: `APP_PORT=8081 make up`
+(порядок взят из `docker-compose.yml`: `${APP_PORT:-8080}:8080`).
+
 ## API
 
 | Метод | Путь | Зачем |
