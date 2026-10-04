@@ -35,4 +35,25 @@ final class DecisionEngineTest extends TestCase
             'высокий LTV' => [120.0, DecisionEngine::REJECT],
         ];
     }
+
+    #[DataProvider('mileageBoundaries')]
+    public function testDecidesByLtvWhenMileageIsWithinLimit(float $ltv, int $mileage, string $expected): void
+    {
+        $engine = new DecisionEngine(['approve_max' => 60.0, 'review_max' => 85.0], 400000);
+
+        self::assertSame($expected, $engine->decide($ltv, $mileage));
+    }
+
+    /** @return array<string,array{float,int,string}> */
+    public static function mileageBoundaries(): array
+    {
+        return [
+            'под порогом, LTV-approve' => [50.0, 399999, DecisionEngine::APPROVE],
+            'ровно на пороге 400000, LTV-approve' => [50.0, 400000, DecisionEngine::APPROVE],
+            'первое значение за порогом 400001, LTV-approve понижен' => [50.0, 400001, DecisionEngine::REVIEW],
+            'верхняя граница валидации 500000, LTV-approve понижен' => [50.0, 500000, DecisionEngine::REVIEW],
+            'за порогом, LTV-review остаётся review' => [70.0, 400001, DecisionEngine::REVIEW],
+            'за порогом, LTV-reject не смягчается' => [95.0, 400001, DecisionEngine::REJECT],
+        ];
+    }
 }
