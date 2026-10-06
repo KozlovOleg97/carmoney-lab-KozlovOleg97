@@ -15,7 +15,9 @@
       "*.env*": "deny",
       "kilo.jsonc": "deny"
     },
-    "bash": {
+    "glob": "deny",
+    "grep": "deny",
+      "bash": {
       "*": "ask",
       "git *": "allow",
       "git push*": "ask",
@@ -24,7 +26,9 @@
       "*reset_db*": "deny",
       "rm -rf*": "deny",
       "git push --force*": "deny",
-      "ast-index*": "allow"
+      "ast-index*": "allow",
+      "grep*": "deny"
     }
+
   }
 }
