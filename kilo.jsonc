@@ -5,7 +5,8 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
   "model": "openrouter/minimax/minimax-m3",
-   "permission": {
+
+  "permission": {
     "read": {
       "*": "allow",
       "*.env*": "deny"
@@ -17,7 +18,7 @@
     },
     "glob": "deny",
     "grep": "deny",
-      "bash": {
+    "bash": {
       "*": "ask",
       "git *": "allow",
       "git push*": "ask",
@@ -29,6 +30,13 @@
       "ast-index*": "allow",
       "grep*": "deny"
     }
+  },
 
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "@playwright/mcp@latest"],
+      "enabled": true
+    }
   }
 }
