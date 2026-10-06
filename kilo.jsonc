@@ -23,7 +23,8 @@
       "*.env*": "deny",
       "*reset_db*": "deny",
       "rm -rf*": "deny",
-      "git push --force*": "deny"
+      "git push --force*": "deny",
+      "ast-index*": "allow"
     }
   }
 }
