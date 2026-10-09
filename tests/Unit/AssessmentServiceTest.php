@@ -25,17 +25,21 @@ final class AssessmentServiceTest extends TestCase
         $this->service = new AssessmentService(
             new ApplicationValidator($rules, new VinValidator($rules['vin']), $age),
             new LtvCalculator(),
-            new DecisionEngine($rules['ltv']),
+            new DecisionEngine(
+                $rules['ltv'],
+                (int) $rules['vehicle']['review_mileage_km'],
+                (int) $rules['vehicle']['max_age_years'],
+            ),
             $age,
         );
     }
 
     /** @return array<string,mixed> */
-    private function payload(int $amount, int $marketValue, int $mileage = 96000): array
+    private function payload(int $amount, int $marketValue, int $mileage = 96000, ?int $yearOffset = null): array
     {
         return [
             'vin' => 'XTA21099998765432',
-            'year' => (int) date('Y') - 4,
+            'year' => (int) date('Y') - ($yearOffset ?? 4),
             'mileage' => $mileage,
             'market_value' => $marketValue,
             'requested_amount' => $amount,
@@ -153,6 +157,25 @@ final class AssessmentServiceTest extends TestCase
         $result = $this->service->assess($this->payload(450000, 900000, 0));
 
         self::assertSame(50.0, $result['ltv']);
+        self::assertSame(DecisionEngine::APPROVE, $result['decision']);
+        self::assertSame(450000, $result['approved_limit']);
+    }
+
+    public function testRejectsOldVehicleEvenWithLowLtv(): void
+    {
+        $result = $this->service->assess($this->payload(450000, 900000, 96000, 25));
+
+        self::assertSame(50.0, $result['ltv']);
+        self::assertSame(25, $result['vehicle_age']);
+        self::assertSame(DecisionEngine::REJECT, $result['decision']);
+        self::assertSame(0, $result['approved_limit']);
+    }
+
+    public function testAcceptsVehicleExactlyAtMaxAge(): void
+    {
+        $result = $this->service->assess($this->payload(450000, 900000, 96000, 20));
+
+        self::assertSame(20, $result['vehicle_age']);
         self::assertSame(DecisionEngine::APPROVE, $result['decision']);
         self::assertSame(450000, $result['approved_limit']);
     }
