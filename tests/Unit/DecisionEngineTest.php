@@ -14,13 +14,17 @@ final class DecisionEngineTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->engine = new DecisionEngine(['approve_max' => 60.0, 'review_max' => 85.0]);
+        $this->engine = new DecisionEngine(
+            ['approve_max' => 60.0, 'review_max' => 85.0],
+            400000,
+            20,
+        );
     }
 
     #[DataProvider('ltvValues')]
     public function testDecidesByLtv(float $ltv, string $expected): void
     {
-        self::assertSame($expected, $this->engine->decide($ltv));
+        self::assertSame($expected, $this->engine->decide($ltv, null, 5));
     }
 
     /** @return array<string,array{float,string}> */
@@ -39,9 +43,13 @@ final class DecisionEngineTest extends TestCase
     #[DataProvider('mileageBoundaries')]
     public function testDecidesByLtvWhenMileageIsWithinLimit(float $ltv, int $mileage, string $expected): void
     {
-        $engine = new DecisionEngine(['approve_max' => 60.0, 'review_max' => 85.0], 400000);
+        $engine = new DecisionEngine(
+            ['approve_max' => 60.0, 'review_max' => 85.0],
+            400000,
+            20,
+        );
 
-        self::assertSame($expected, $engine->decide($ltv, $mileage));
+        self::assertSame($expected, $engine->decide($ltv, $mileage, 5));
     }
 
     /** @return array<string,array{float,int,string}> */
@@ -55,5 +63,33 @@ final class DecisionEngineTest extends TestCase
             'за порогом, LTV-review остаётся review' => [70.0, 400001, DecisionEngine::REVIEW],
             'за порогом, LTV-reject не смягчается' => [95.0, 400001, DecisionEngine::REJECT],
         ];
+    }
+
+    #[DataProvider('ageBoundaries')]
+    public function testForcesRejectWhenVehicleIsOlderThanLimit(int $age, string $expected): void
+    {
+        self::assertSame($expected, $this->engine->decide(20.0, null, $age));
+    }
+
+    /** @return array<string,array{int,string}> */
+    public static function ageBoundaries(): array
+    {
+        return [
+            'ровно на границе 20, низкий LTV остаётся approve' => [20, DecisionEngine::APPROVE],
+            'первое значение за границей 21, низкий LTV -> reject' => [21, DecisionEngine::REJECT],
+            'глубоко за границей 35, низкий LTV -> reject' => [35, DecisionEngine::REJECT],
+            'за границей, высокий LTV всё равно reject (не смягчается)' => [30, DecisionEngine::REJECT],
+        ];
+    }
+
+    public function testAgeRejectOverridesApproveEvenWithLowMileage(): void
+    {
+        $engine = new DecisionEngine(
+            ['approve_max' => 60.0, 'review_max' => 85.0],
+            400000,
+            20,
+        );
+
+        self::assertSame(DecisionEngine::REJECT, $engine->decide(10.0, 1000, 25));
     }
 }
