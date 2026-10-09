@@ -33,10 +33,23 @@
   },
 
   "mcp": {
-    "playwright": {
-      "type": "local",
-      "command": ["npx", "@playwright/mcp@latest"],
-      "enabled": true
+  "playwright": {
+    "type": "local",
+    "command": ["npx", "@playwright/mcp@latest"],
+    "enabled": true
+  },
+
+  "mobile": {
+    "type": "local",
+    "command": ["claude-in-mobile.cmd"],
+    "enabled": true,
+    "environment": {
+      "MOBILE_PROFILE": "android",
+      "MCP_DEVICES_PLATFORMS": "android"
     }
   }
 }
+}
+
+
+
